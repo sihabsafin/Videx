@@ -1,11 +1,9 @@
 """
 LLM provider abstraction layer
-Supports Groq and Google Gemini
+Supports Groq and Google Gemini with improved compatibility
 """
 
 from typing import Optional, Dict
-from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, SystemMessage
 from src.config import Config
 
@@ -34,27 +32,45 @@ class LLMProvider:
         self._initialize_llm()
     
     def _initialize_llm(self):
-        """Initialize the appropriate LLM"""
-        if self.provider == "groq":
-            model = Config.GROQ_MODELS.get(self.mode, Config.GROQ_MODELS["balanced"])
-            self.llm = ChatGroq(
-                api_key=Config.GROQ_API_KEY,
-                model_name=model,
-                temperature=0.3,
-                max_tokens=4000
-            )
-        
-        elif self.provider == "gemini":
-            model = Config.GEMINI_MODELS.get(self.mode, Config.GEMINI_MODELS["balanced"])
-            self.llm = ChatGoogleGenerativeAI(
-                api_key=Config.GOOGLE_API_KEY,
-                model=model,
-                temperature=0.3,
-                max_output_tokens=4000
-            )
-        
-        else:
-            raise ValueError(f"Unsupported provider: {self.provider}")
+        """Initialize the appropriate LLM with proper error handling"""
+        try:
+            if self.provider == "groq":
+                from langchain_groq import ChatGroq
+                model = Config.GROQ_MODELS.get(self.mode, Config.GROQ_MODELS["balanced"])
+                
+                self.llm = ChatGroq(
+                    groq_api_key=Config.GROQ_API_KEY,
+                    model_name=model,
+                    temperature=0.3,
+                    max_tokens=4000
+                )
+            
+            elif self.provider == "gemini":
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                model = Config.GEMINI_MODELS.get(self.mode, Config.GEMINI_MODELS["balanced"])
+                
+                self.llm = ChatGoogleGenerativeAI(
+                    google_api_key=Config.GOOGLE_API_KEY,
+                    model=model,
+                    temperature=0.3,
+                    max_output_tokens=4000
+                )
+            
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+                
+        except Exception as e:
+            # Fallback to other provider if available
+            if self.provider == "groq" and Config.GOOGLE_API_KEY:
+                print(f"Groq initialization failed: {e}. Trying Gemini...")
+                self.provider = "gemini"
+                self._initialize_llm()
+            elif self.provider == "gemini" and Config.GROQ_API_KEY:
+                print(f"Gemini initialization failed: {e}. Trying Groq...")
+                self.provider = "groq"
+                self._initialize_llm()
+            else:
+                raise Exception(f"LLM initialization failed: {str(e)}")
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         """
